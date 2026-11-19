@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>Chama Monthly Statement</title>
+<link rel="stylesheet" href="statement.css">
+</head>
+<body>
+
+<div class="toolbar no-print">
+  <button type="button" onclick="window.print()">Print / Save as PDF</button>
+  <button type="button" onclick="copyWhatsApp()">Copy WhatsApp summary</button>
+  <label class="file">Load JSON<input type="file" id="load" accept=".json,application/json"></label>
+  <span class="hint" id="hint">All figures come from the payload below. Nothing is fetched.</span>
+</div>
+
+<main id="doc"></main>
+
+<!--
+  ============================================================================
+  THIS FILE IS A SHELL. Three things only:
+    1. the stylesheet link above (statement.css)
+    2. the data payload below
+    3. six lines of wiring at the bottom
+  All arithmetic and layout live in render.js.
+
+  TO USE IT MANUALLY
+    Duplicate this file per group/period, edit the payload, print to PDF.
+    If you change a figure, the reconciliation check will tell you if it is wrong.
+
+  THE PAYLOAD CONTRACT is documented in schema.md. Every field is optional
+  except: group, period, periodStart, periodEnd, openingBalance,
+  statementBalances, members.
+
+  Swap the data without editing this file: toolbar -> "Load JSON".
+  That is the same call the future app will make.
+  ============================================================================
+-->
+<script id="payload" type="application/json">
+{
+  "sample": true,
+  "group": "Umoja Welfare Chama",
+  "period": "November 2026",
+  "periodStart": "2026-11-01",
+  "periodEnd": "2026-11-30",
+  "preparedBy": "J. Wanjiku (Treasurer)",
+  "verifiedBy": "S. Otieno (Chairperson)",
+  "openingBalance": 128500,
+  "statementBalances": { "mpesa": 112850, "cash": 24000 },
+  "members": [
+    { "name": "Alice Mwangi",   "expected": 2000, "paid": 2000, "date": "2026-11-03", "ref": "TGH4X8K2LM", "note": "" },
+    { "name": "Brian Kiptoo",   "expected": 2000, "paid": 2000, "date": "2026-11-03", "ref": "TGH7P2QW4N", "note": "" },
+    { "name": "Caroline Njeri", "expected": 2000, "paid": 2000, "date": "2026-11-04", "ref": "TGH9M4ZX1P", "note": "" },
+    { "name": "David Ochieng",  "expected": 2000, "paid": 2000, "date": "2026-11-05", "ref": "TGJ2B8LK6R", "note": "" },
+    { "name": "Esther Wambui",  "expected": 2000, "paid": 2000, "date": "2026-11-05", "ref": "TGJ5C1NM3S", "note": "" },
+    { "name": "Felix Mutua",    "expected": 2000, "paid": 2000, "date": "2026-11-06", "ref": "TGJ8D7TR9V", "note": "" },
+    { "name": "Grace Achieng",  "expected": 2000, "paid": 2000, "date": "2026-11-10", "ref": "TGK3F1YB2W", "note": "" },
+    { "name": "Hassan Abdi",    "expected": 2000, "paid": 2000, "date": "2026-11-12", "ref": "TGK6G9HC5X", "note": "" },
+    { "name": "Irene Chebet",   "expected": 2000, "paid": 0,    "date": "",           "ref": "",           "note": "No payment received" },
+    { "name": "James Mwangi",   "expected": 2000, "paid": 1000, "date": "2026-11-14", "ref": "TGL1J4KD8Z", "note": "Balance promised by 20 Nov" },
+    { "name": "Kelvin Otieno",  "expected": 2000, "paid": 0,    "date": "",           "ref": "",           "note": "No payment received" },
+    { "name": "Lucy Njoroge",   "expected": 2000, "paid": 2000, "date": "2026-11-15", "ref": "TGL5K2MF3A", "note": "" }
+  ],
+  "loans": [
+    { "member": "Peter Otieno",  "principal": 10000, "interest": 1000, "disbursedOn": "2026-09-15", "dueOn": "2026-12-15", "repaidToDate": 6000, "repaidThisPeriod": 4000 },
+    { "member": "Mercy Wanjala", "principal": 8000,  "interest": 800,  "disbursedOn": "2026-10-02", "dueOn": "2027-01-02", "repaidToDate": 3300, "repaidThisPeriod": 2500 },
+    { "member": "Samuel Kariuki","principal": 15000, "interest": 1500, "disbursedOn": "2026-11-09", "dueOn": "2027-02-09", "repaidToDate": 0,    "repaidThisPeriod": 0 },
+    { "member": "Grace Achieng", "principal": 5000,  "interest": 500,  "disbursedOn": "2026-07-20", "dueOn": "2026-10-20", "repaidToDate": 2000, "repaidThisPeriod": 0 }
+  ],
+  "otherIncome": [
+    { "date": "2026-11-12", "item": "Late contribution fine — James Mwangi", "amount": 500, "ref": "TGL3N7QP8B" }
+  ],
+  "expenses": [
+    { "date": "2026-11-04", "item": "Minute book and stationery", "amount": 350,  "approvedBy": "Chair" },
+    { "date": "2026-11-08", "item": "Meeting hall hire",          "amount": 1500, "approvedBy": "Chair" },
+    { "date": "2026-11-12", "item": "Transport — bank agent",     "amount": 800,  "approvedBy": "Committee" }
+  ],
+  "notes": [
+    "Two members are in arrears. Reminders were sent on 14 Nov; both committed to pay before 25 Nov.",
+    "Grace Achieng's loan is past its due date. The committee agreed on 9 Nov to add a 5% penalty if unpaid by 30 Nov.",
+    "Samuel Kariuki's loan was approved by the committee on 8 Nov (minutes ref 11/2026)."
+  ]
+}
+</script>
+
+<script src="render.js"></script>
+<script>
+  (function () {
+    "use strict";
+
+    var doc = document.getElementById("doc");
+    var hint = document.getElementById("hint");
+    var current = null;
+
+    function draw(data) {
+      current = data;
+      doc.innerHTML = ChamaStatement.render(data);
+      return current;
+    }
+
+    function setHint(text) {
+      hint.textContent = text;
+    }
+
+    // 1. Draw the payload that lives in this file.
+    try {
+      draw(JSON.parse(document.getElementById("payload").textContent));
+    } catch (err) {
+      doc.innerHTML = "<div class='issues issues-error'><b>Could not read the payload.</b><ul><li>" +
+        String(err.message).replace(/[<>&]/g, "") + "</li></ul></div>";
+    }
+
+    // 2. Replace the data from a JSON file, without editing this HTML.
+    document.getElementById("load").addEventListener("change", function (event) {
+      var file = event.target.files && event.target.files[0];
+      if (!file) return;
+      var reader = new FileReader();
+      reader.onload = function () {
+        try {
+          draw(JSON.parse(String(reader.result)));
+          setHint("Loaded " + file.name + ". Check the reconciliation line.");
+        } catch (err) {
+          setHint("Could not read " + file.name + ": " + err.message);
+        }
+      };
+      reader.readAsText(file);
+    });
+
+    // 3. Copy the short version for WhatsApp.
+    window.copyWhatsApp = function () {
+      if (!current) return;
+      var text = ChamaStatement.toWhatsApp(current);
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(
+          function () { setHint("Copied. Paste into the group's WhatsApp."); },
+          function () { window.prompt("Copy this:", text); }
+        );
+      } else {
+        window.prompt("Copy this:", text);
+      }
+    };
+
+    // Exposed for testing and for the future app.
+    window.drawStatement = draw;
+    window.chamaStatement = function () { return current; };
+  })();
+</script>
+</body>
+</html>

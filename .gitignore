@@ -1,0 +1,14 @@
+# Local/editor/OS noise
+.DS_Store
+Thumbs.db
+*.log
+
+# Local outputs / scratch
+out*.json
+*.tmp
+*.bak
+
+# Python/Node caches (if any appear locally)
+__pycache__/
+*.pyc
+node_modules/

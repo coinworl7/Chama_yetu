@@ -1,0 +1,21 @@
+{
+  "group": "Tumaini Investment Club",
+  "period": "November 2026",
+  "periodStart": "2026-11-01",
+  "periodEnd": "2026-11-30",
+  "preparedBy": "A. Treasurer",
+  "verifiedBy": "B. Chairperson",
+  "openingBalance": 48000,
+  "statementBalances": { "mpesa": 58000, "cash": 0 },
+  "members": [
+    { "name": "Alice Mwangi",   "phone": "0712000001", "expected": 2000 },
+    { "name": "Brian Kiptoo",   "phone": "0712000002", "expected": 2000 },
+    { "name": "Caroline Njeri", "phone": "0712000003", "expected": 2000 },
+    { "name": "David Ochieng",  "phone": "0712000004", "expected": 2000 },
+    { "name": "Esther Wambui",  "phone": "0712000005", "expected": 2000 }
+  ],
+  "loans": [],
+  "otherIncome": [],
+  "expenses": [],
+  "notes": []
+}

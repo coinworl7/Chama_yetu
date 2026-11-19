@@ -1,0 +1,948 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>M-Pesa importer — Chama Ledger</title>
+<!-- The statement's own stylesheet, so the preview is the real thing. -->
+<link rel="stylesheet" href="../statement/statement.css">
+<style>
+  /* App chrome. Everything here is scoped so it cannot change the printed statement. */
+  body.app-mode { font-size: 12.5px; }
+  #doc { font-size: 11.5px; }
+  @media print { #doc { font-size: 10.5px; } }
+
+  .hidden { display: none !important; }
+  .app { max-width: 900px; margin: 0 auto; }
+  .app-head { margin-bottom: 4px; }
+  .app-head h1 { font-size: 24px; }
+  .app-head .sub { color: var(--muted); font-size: 12.5px; margin-top: 4px; }
+  .app-footer { color: var(--muted); font-size: 10.5px; text-align: center; margin: 22px 0 0; }
+
+  .steps { list-style: none; display: flex; gap: 6px; padding: 0; margin: 16px 0 18px; flex-wrap: wrap; }
+  .steps li {
+    display: flex; align-items: center; gap: 7px; padding: 7px 12px;
+    border: 1px solid var(--line); border-radius: 20px; background: #fff;
+    color: var(--muted); font-weight: 600; font-size: 11.5px; cursor: default;
+  }
+  .steps li.reachable { cursor: pointer; }
+  .steps li b {
+    display: inline-flex; width: 18px; height: 18px; border-radius: 50%;
+    background: #e4e8e4; color: #556; align-items: center; justify-content: center;
+    font-size: 10px;
+  }
+  .steps li.active { border-color: var(--accent); color: var(--accent); box-shadow: 0 0 0 2px rgba(18,96,60,.08); }
+  .steps li.active b { background: var(--accent); color: #fff; }
+  .steps li.done { color: var(--accent); }
+  .steps li.done b { background: #e6f1ea; color: var(--accent); }
+
+  .card { background: #fff; border: 1px solid var(--line); border-radius: 6px; padding: 20px 22px; margin-bottom: 16px; }
+  .card > h2:first-child { margin-top: 0; }
+  .card p { margin: 0 0 12px; }
+  .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
+
+  .drop { border: 1.5px dashed #c3cbc3; border-radius: 6px; padding: 14px; display: block; background: #fbfcfb; }
+  .drop.ok { border-color: #9cc4ac; background: #f6faf7; }
+  .drop.bad { border-color: #d9a8a8; background: #fdf7f7; }
+  .drop-title { display: block; font-weight: 700; }
+  .drop-hint { display: block; color: var(--muted); font-size: 10.5px; margin: 2px 0 9px; }
+  input[type=file] { font: inherit; font-size: 11px; max-width: 100%; }
+  input[type=file]::file-selector-button {
+    font: inherit; font-size: 11px; font-weight: 600; padding: 6px 10px; margin-right: 8px;
+    border: 1px solid #b9beb9; border-radius: 5px; background: #fff; cursor: pointer;
+  }
+  .file-state { display: block; margin-top: 9px; font-size: 11px; color: var(--muted); }
+  .file-state.ok { color: var(--accent); font-weight: 700; }
+  .file-state.bad { color: var(--bad); font-weight: 700; }
+
+  .pdf-row {
+    display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+    margin-top: 12px; padding: 11px 12px; border: 1px solid #d8ddd8;
+    border-radius: 6px; background: #fbfcfb;
+  }
+  .pdf-row label { font-size: 11px; font-weight: 700; }
+  .pdf-row input[type=password] {
+    font: inherit; font-size: 11.5px; padding: 6px 8px; width: 190px;
+    border: 1px solid #c3c8c3; border-radius: 5px; background: #fff;
+  }
+  .pdf-row .muted { font-size: 10.5px; flex: 1 1 260px; }
+
+  .kv { display: flex; gap: 26px; flex-wrap: wrap; margin: 14px 0 0; }
+  .kv div span { display: block; font-size: 9.5px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); }
+  .kv div b { font-size: 12.5px; }
+
+  .msg { border-radius: 4px; padding: 9px 12px; margin: 12px 0; font-size: 11.5px; }
+  .msg ul { margin: 5px 0 0 18px; padding: 0; }
+  .msg-bad { background: #fbeaea; border: 1px solid #e2b6b6; color: #7a1c1c; }
+  .msg-warn { background: #fdf6e7; border: 1px solid #e6d3a6; color: #6b4b00; }
+  .msg-ok { background: #eef6f0; border: 1px solid #b7d3c0; color: #14532d; }
+
+  .actions {
+    display: flex; gap: 8px; align-items: center; justify-content: flex-end; flex-wrap: wrap;
+    margin-top: 20px; padding-top: 14px; border-top: 1px solid var(--line);
+  }
+  .actions .muted { margin-right: auto; }
+  .btn {
+    font: inherit; font-weight: 600; font-size: 12px; padding: 8px 14px; border-radius: 6px;
+    border: 1px solid #b9beb9; background: #fff; color: var(--ink); cursor: pointer;
+  }
+  .btn:hover { background: #f2f5f2; }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+  .btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn-primary:hover { background: #0e4d30; }
+  .btn-ghost { border-color: transparent; background: transparent; color: var(--accent); padding-left: 6px; padding-right: 6px; }
+  .muted { color: var(--muted); }
+
+  .map-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px 18px; margin-bottom: 6px; }
+  .field label { display: block; font-size: 9.5px; letter-spacing: .07em; text-transform: uppercase; color: #5a5a5a; font-weight: 700; margin-bottom: 3px; }
+  .field select { font: inherit; font-size: 11.5px; width: 100%; padding: 7px 8px; border: 1px solid #c3c8c3; border-radius: 5px; background: #fff; }
+  .field .tag { display: inline-block; margin-left: 6px; font-size: 8.5px; letter-spacing: .05em; padding: 1px 5px; border-radius: 8px; vertical-align: 1px; }
+  .field .tag.req { background: #f7e4e4; color: var(--bad); }
+  .field .tag.rec { background: #fbf0dd; color: var(--warn); }
+
+  .scroll { overflow-x: auto; }
+  .scroll table { min-width: 620px; }
+  .recon-strip {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px;
+    border: 1px solid var(--line); border-radius: 6px; padding: 14px; background: #fafbfa; margin-bottom: 14px;
+  }
+  .recon-strip div span { display: block; font-size: 9.5px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); }
+  .recon-strip div b { font-size: 15px; }
+  .recon-strip div i { display: block; font-style: normal; font-size: 10px; color: var(--muted); }
+  .recon-strip.bad { border-color: #e2b6b6; background: #fdf7f7; }
+  .recon-strip.bad .diff { color: var(--bad); }
+  .recon-strip.ok { border-color: #b7d3c0; background: #f7fbf8; }
+  .recon-strip.ok .diff { color: var(--ok); }
+
+  td select { font: inherit; font-size: 11px; padding: 4px 6px; border: 1px solid #c3c8c3; border-radius: 4px; background: #fff; max-width: 230px; }
+  .table-note { font-size: 10.5px; color: var(--muted); margin: 8px 0 0; }
+  .line-ref { font-family: Consolas, monospace; }
+  .spacer { height: 6px; }
+
+  /* ---------- phones: the importer is usable with one thumb ---------- */
+  @media screen and (max-width: 640px) {
+    body.app-mode { padding: 12px 8px 28px; font-size: 14px; }
+    .app-head h1 { font-size: 21px; }
+    .app-head .sub { font-size: 12.5px; line-height: 1.5; }
+
+    .steps {
+      flex-wrap: nowrap; overflow-x: auto; gap: 6px;
+      margin: 12px 0 14px; padding-bottom: 4px;
+      -webkit-overflow-scrolling: touch; scrollbar-width: none;
+    }
+    .steps::-webkit-scrollbar { display: none; }
+    .steps li { flex: 0 0 auto; padding: 8px 11px; font-size: 11.5px; min-height: 44px; }
+    .steps li b { width: 20px; height: 20px; }
+
+    .card { padding: 16px 14px; margin-bottom: 12px; }
+    .card h2 { font-size: 15px; }
+
+    .grid-2, .map-grid { grid-template-columns: 1fr; gap: 10px; }
+    .drop { padding: 12px; }
+    .drop-title { font-size: 14px; }
+    .drop-hint { font-size: 11.5px; line-height: 1.45; }
+    input[type=file] { width: 100%; font-size: 13px; min-height: 44px; }
+    input[type=file]::file-selector-button { font-size: 12.5px; padding: 9px 11px; }
+    .file-state { font-size: 11.5px; overflow-wrap: anywhere; }
+
+    .pdf-row { flex-direction: column; align-items: stretch; gap: 8px; padding: 12px; }
+    .pdf-row input[type=password] { width: 100%; font-size: 16px; padding: 10px; }
+    .pdf-row .btn { width: 100%; min-height: 44px; font-size: 15px; }
+    .pdf-row .muted { font-size: 11.5px; }
+
+    .msg { font-size: 12.5px; padding: 10px 11px; }
+    .kv { gap: 14px 22px; }
+    .kv div b { font-size: 13px; }
+
+    .actions { justify-content: stretch; gap: 8px; margin-top: 16px; }
+    .actions .muted { flex: 1 0 100%; margin-right: 0; font-size: 11.5px; }
+    .actions .btn { flex: 1 1 100%; min-height: 46px; padding: 12px 14px; font-size: 15px; }
+    .actions .btn-ghost { border: 1px solid var(--line); }
+
+    .field label { font-size: 10.5px; }
+    .field select, td select { font-size: 16px; min-height: 44px; padding: 9px 8px; }
+    .scroll { margin: 0 -4px; }
+    .scroll table { min-width: 560px; }
+    .table-note { font-size: 11px; }
+
+    .recon-strip { grid-template-columns: 1fr 1fr; gap: 10px; padding: 12px; }
+    .recon-strip div b { font-size: 14px; }
+    .recon-strip div i { font-size: 10.5px; }
+    .line-ref { font-size: 10.5px; }
+
+    #step-4-bar { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 0 0 12px; }
+    #step-4-bar .muted { order: -1; grid-column: 1 / -1; text-align: center; font-size: 11px; }
+    #step-4-bar .btn { width: 100%; min-height: 46px; padding: 11px 10px; font-size: 13.5px; }
+
+    .app-footer { font-size: 11px; }
+  }
+</style>
+</head>
+<body class="app-mode">
+
+<div class="app no-print" id="app">
+  <header class="app-head">
+    <div class="kicker">Chama Ledger · importer</div>
+    <h1>M-Pesa statement to member statement</h1>
+    <div class="sub">Two files, four screens. Nothing is uploaded — the statement is read inside this tab and never leaves it.</div>
+  </header>
+
+  <ol class="steps" id="steps">
+    <li data-step="1"><b>1</b> Upload</li>
+    <li data-step="2"><b>2</b> Columns</li>
+    <li data-step="3"><b>3</b> Review</li>
+    <li data-step="4"><b>4</b> Statement</li>
+  </ol>
+
+  <!-- ============================ 1. UPLOAD ============================ -->
+  <section class="card" id="step-1">
+    <h2>1. Two files</h2>
+    <div class="grid-2">
+      <div class="drop" id="csv-drop">
+        <span class="drop-title">M-Pesa statement</span>
+        <span class="drop-hint">CSV export, or the PDF from Safaricom — the file with <em>Receipt No.</em>, <em>Details</em>, <em>Paid In</em> and <em>Withdrawn</em>.</span>
+        <input type="file" id="csv-file" accept=".csv,.pdf,text/csv,application/pdf" aria-label="M-Pesa statement CSV or PDF file">
+        <span class="file-state" id="csv-state">No file chosen</span>
+      </div>
+      <div class="drop" id="group-drop">
+        <span class="drop-title">Group file</span>
+        <span class="drop-hint">JSON — the member list, opening balance, and what the accounts hold. See <code>statement/schema.md</code>.</span>
+        <input type="file" id="group-file" accept=".json,application/json" aria-label="Group member list JSON file">
+        <span class="file-state" id="group-state">No file chosen</span>
+      </div>
+    </div>
+
+    <div id="group-summary"></div>
+
+    <div class="pdf-row hidden" id="pdf-row">
+      <label for="pdf-password">PDF password</label>
+      <input type="password" id="pdf-password" autocomplete="off" spellcheck="false" placeholder="Only if the PDF asks for one">
+      <button class="btn" id="pdf-read" type="button">Read PDF</button>
+      <span class="muted">M-Pesa emails a locked PDF. The password is used in this tab only — it is never stored or sent.</span>
+    </div>
+
+    <div id="step1-error" class="msg msg-bad hidden"></div>
+
+    <div class="actions">
+      <span class="muted" id="step1-note">Both files are needed before matching can start.</span>
+      <button class="btn btn-primary" id="to-step-2" disabled>Check the columns →</button>
+    </div>
+  </section>
+
+  <!-- ============================ 2. COLUMNS =========================== -->
+  <section class="card hidden" id="step-2">
+    <h2>2. Which column is which?</h2>
+    <p class="muted">Proposed from the header row. Change anything that is wrong — this is the only place the file layout is assumed. Every amount is read from the columns you pick here.</p>
+    <div class="map-grid" id="map-grid"></div>
+    <div id="map-warning" class="msg msg-warn hidden"></div>
+
+    <h2>First rows, as they will be read</h2>
+    <div class="scroll"><table id="preview-table"></table></div>
+    <p class="table-note" id="preview-note"></p>
+
+    <div class="actions">
+      <button class="btn btn-ghost" id="back-1">← Back</button>
+      <button class="btn btn-primary" id="to-step-3">Match payments →</button>
+    </div>
+  </section>
+
+  <!-- ============================ 3. REVIEW ============================ -->
+  <section class="card hidden" id="step-3">
+    <h2>3. What the statement will say</h2>
+    <div id="recon-card"></div>
+    <div id="review-body"></div>
+
+    <div class="actions">
+      <button class="btn btn-ghost" id="back-2">← Columns</button>
+      <button class="btn btn-primary" id="to-step-4">Build the statement →</button>
+    </div>
+  </section>
+
+  <p class="app-footer no-print">No server, no account, no upload. The same <code>import.js</code> and <code>render.js</code> that the tests run.</p>
+</div>
+
+<!-- ============================ 4. STATEMENT ========================= -->
+<div class="actions no-print hidden" id="step-4-bar">
+  <button class="btn btn-ghost" id="back-3">← Review</button>
+  <span class="muted" id="step4-note"></span>
+  <button class="btn" id="download-json">Download JSON</button>
+  <button class="btn btn-ghost" id="start-over">Start over</button>
+  <button class="btn btn-primary" id="print">Print / Save as PDF</button>
+</div>
+<main id="doc" class="hidden"></main>
+
+<script src="../statement/render.js"></script>
+<script src="import.js"></script>
+<script src="pdf.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  var importer = window.ChamaImport;
+  var api = window.ChamaStatement;
+  var $ = function (id) { return document.getElementById(id); };
+
+  if (!importer || !api) {
+    document.getElementById("app").innerHTML =
+      "<div class='msg msg-bad'><b>The importer did not load.</b> Open this folder as it was delivered: " +
+      "<code>importer.html</code> needs <code>import.js</code> beside it and <code>../statement/render.js</code>.</div>";
+    return;
+  }
+
+  var state = {
+    step: 1,
+    maxStep: 1,
+    source: null,
+    sourceName: "",
+    pdfFile: null,
+    parsed: null,
+    group: null,
+    groupName: "",
+    mapping: null,
+    resolutions: {},
+    result: null,
+  };
+
+  var FIELDS = [
+    ["receipt", "Receipt / transaction ID", "rec"],
+    ["date", "Date", "req"],
+    ["details", "Details / description", "req"],
+    ["paidIn", "Money in", "req"],
+    ["withdrawn", "Money out", "rec"],
+    ["status", "Status", "rec"],
+  ];
+
+  /* ---------- helpers ---------- */
+
+  function esc(value) {
+    return String(value == null ? "" : value).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+
+  function money(n) {
+    return api.fmt(n);
+  }
+
+  function viaLabel(via) {
+    return { phone: "Phone", name: "Full name", surname: "Surname", manual: "Your call" }[via] || via;
+  }
+
+  function viaBadge(via) {
+    var cls = via === "phone" || via === "manual" ? "ok" : "warn";
+    return "<span class='badge " + cls + "'>" + esc(viaLabel(via)) + "</span>";
+  }
+
+  function show(el, html) {
+    el.innerHTML = html;
+    el.classList.remove("hidden");
+  }
+
+  function hide(el) {
+    el.innerHTML = "";
+    el.classList.add("hidden");
+  }
+
+  /* ---------- navigation ---------- */
+
+  function goStep(n) {
+    state.step = n;
+    if (n > state.maxStep) state.maxStep = n;
+
+    [1, 2, 3].forEach(function (i) {
+      $("step-" + i).classList.toggle("hidden", i !== n);
+    });
+    $("step-4-bar").classList.toggle("hidden", n !== 4);
+    $("doc").classList.toggle("hidden", n !== 4);
+    $("app").classList.toggle("hidden", n === 4);
+    document.body.classList.toggle("app-mode", n !== 4);
+
+    var items = document.querySelectorAll("#steps li");
+    for (var i = 0; i < items.length; i += 1) {
+      var step = Number(items[i].getAttribute("data-step"));
+      items[i].classList.toggle("active", step === n);
+      items[i].classList.toggle("done", step < n);
+      items[i].classList.toggle("reachable", step <= state.maxStep);
+      if (step === n) items[i].setAttribute("aria-current", "step");
+      else items[i].removeAttribute("aria-current");
+    }
+
+    if (n === 2) renderPreview();
+    window.scrollTo(0, 0);
+  }
+
+  document.querySelectorAll("#steps li").forEach(function (li) {
+    li.addEventListener("click", function () {
+      var step = Number(li.getAttribute("data-step"));
+      if (step === 4) {
+        if (state.result) buildView();
+        return;
+      }
+      if (step <= state.maxStep) goStep(step);
+    });
+  });
+
+  /* ---------- 1. files ---------- */
+
+  function fail1(message) {
+    var el = $("step1-error");
+    el.className = "msg msg-bad";
+    el.innerHTML = "<b>" + esc(message) + "</b>";
+  }
+
+  function warn1(message) {
+    var el = $("step1-error");
+    el.className = "msg msg-warn";
+    el.innerHTML = "<b>" + esc(message) + "</b>";
+  }
+
+  function clear1Error() {
+    var el = $("step1-error");
+    el.className = "msg msg-bad hidden";
+    el.innerHTML = "";
+  }
+
+  function setFileState(id, text, kind) {
+    var el = $(id);
+    el.textContent = text;
+    el.className = "file-state" + (kind ? " " + kind : "");
+  }
+
+  function groupProblems(g) {
+    var problems = [];
+    if (!g || typeof g !== "object") return ["The file is not a JSON object."];
+    if (!g.group) problems.push("No group name.");
+    if (!g.period) problems.push("No period label (for example \"November 2026\").");
+    if (!g.periodStart || !g.periodEnd) problems.push("No periodStart / periodEnd.");
+    else if (g.periodStart > g.periodEnd) problems.push("periodStart is after periodEnd.");
+    if (!Array.isArray(g.members) || !g.members.length) problems.push("No members listed.");
+    else {
+      g.members.forEach(function (m, i) {
+        if (!m || !m.name) problems.push("Member " + (i + 1) + " has no name.");
+        else if (!isFinite(Number(m.expected))) problems.push(m.name + " has no expected amount.");
+      });
+    }
+    if (!isFinite(Number(g.openingBalance))) problems.push("openingBalance is not a number.");
+    if (!g.statementBalances || typeof g.statementBalances !== "object") {
+      problems.push("No statementBalances ({ mpesa, cash }).");
+    }
+    return problems;
+  }
+
+  function ready() {
+    var ok = Boolean(state.parsed && state.group && !groupProblems(state.group).length);
+    $("to-step-2").disabled = !ok;
+    $("step1-note").textContent = ok
+      ? "Ready. " + state.parsed.rows.length + " transactions, " + state.group.members.length + " members."
+      : "Both files are needed before matching can start.";
+  }
+
+  function applyParsed(parsed, name, detail) {
+    state.parsed = parsed;
+    state.sourceName = name;
+    state.mapping = importer.guessMapping(parsed.headers);
+    state.resolutions = {};
+    state.result = null;
+    state.maxStep = 1;
+
+    $("csv-drop").className = "drop ok";
+    setFileState("csv-state", detail, "ok");
+    renderMapping();
+    ready();
+  }
+
+  function loadCsv(file) {
+    clear1Error();
+    var reader = new FileReader();
+    reader.onload = function () {
+      try {
+        var text = String(reader.result);
+        var parsed = importer.parseCsv(text);
+        if (!parsed.headers.length) throw new Error("no header row found");
+        if (!parsed.rows.length) throw new Error("a header but no transactions");
+
+        state.source = text;
+        state.pdfFile = null;
+        $("pdf-row").classList.add("hidden");
+        $("pdf-password").value = "";
+        applyParsed(parsed, file.name,
+          file.name + " · " + parsed.rows.length + " rows · " + parsed.headers.length + " columns");
+      } catch (err) {
+        state.source = null;
+        state.parsed = null;
+        $("csv-drop").className = "drop bad";
+        setFileState("csv-state", "Could not read that file", "bad");
+        fail1("CSV: " + err.message + ".");
+        ready();
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  var PDF_MESSAGES = {
+    NOT_PDF: "That file is not a PDF. If it is a CSV, choose it as a CSV instead.",
+    BAD_PDF: "This PDF is damaged or incomplete. Download the statement again, or use the CSV.",
+    BAD_PASSWORD: "That password did not open the PDF. M-Pesa puts it in the same email as the statement — type it above, then press Read PDF.",
+    UNSUPPORTED_ENCRYPTION: "This PDF is locked in a way this reader does not support yet. Export the CSV from M-Pesa instead.",
+    NO_TEXT: "This PDF has no text layer — it looks like a scan or a picture. Export the CSV from M-Pesa instead.",
+    NO_TABLE: "Text was found, but no transaction table. The statement format may have changed; export the CSV instead.",
+    NO_PAGES: "This PDF has no readable pages. Download the statement again.",
+    NO_INFLATE: "This browser cannot uncompress PDF files. Use a current Chrome, Edge or Firefox.",
+  };
+
+  function pdfMessage(err) {
+    return PDF_MESSAGES[err && err.code] || (err && err.message) || "The PDF could not be read.";
+  }
+
+  function loadPdf(file, password) {
+    clear1Error();
+    state.pdfFile = file;
+    state.source = null;
+    state.parsed = null;
+    $("pdf-row").classList.remove("hidden");
+    $("csv-drop").className = "drop";
+    setFileState("csv-state", "Reading " + file.name + " …");
+    ready();
+
+    if (!window.ChamaPdf) {
+      $("csv-drop").className = "drop bad";
+      setFileState("csv-state", "PDF reader missing", "bad");
+      fail1("The PDF reader did not load. Keep pdf.js beside importer.html.");
+      return;
+    }
+
+    file.arrayBuffer().then(function (buffer) {
+      return window.ChamaPdf.extractTable(new Uint8Array(buffer), password || "");
+    }).then(function (table) {
+      state.source = table;
+      applyParsed(table, file.name,
+        file.name + " · " + table.rows.length + " rows · " + table.pageCount +
+        " page" + (table.pageCount === 1 ? "" : "s"));
+      if (table.warnings && table.warnings.length) warn1(table.warnings.join(" "));
+    }).catch(function (err) {
+      state.source = null;
+      state.parsed = null;
+      $("csv-drop").className = "drop bad";
+      if (err && err.code === "BAD_PASSWORD") {
+        setFileState("csv-state", "Locked PDF — password needed", "bad");
+        $("pdf-password").focus();
+      } else {
+        setFileState("csv-state", "Could not read that PDF", "bad");
+      }
+      fail1("PDF: " + pdfMessage(err));
+      ready();
+    });
+  }
+
+  function loadGroup(file) {
+    clear1Error();
+    var reader = new FileReader();
+    reader.onload = function () {
+      var parsed;
+      try {
+        parsed = JSON.parse(String(reader.result));
+      } catch (err) {
+        state.group = null;
+        $("group-drop").className = "drop bad";
+        setFileState("group-state", "That file is not valid JSON", "bad");
+        fail1("Group file: " + err.message);
+        ready();
+        return;
+      }
+
+      var problems = groupProblems(parsed);
+      if (problems.length) {
+        state.group = null;
+        $("group-drop").className = "drop bad";
+        $("group-summary").innerHTML =
+          "<div class='msg msg-bad'><b>This group file cannot be used yet:</b><ul>" +
+          problems.map(function (p) { return "<li>" + esc(p) + "</li>"; }).join("") +
+          "</ul></div>";
+        setFileState("group-state", problems.length + " problem" + (problems.length === 1 ? "" : "s"), "bad");
+        ready();
+        return;
+      }
+
+      state.group = parsed;
+      state.groupName = file.name;
+      state.result = null;
+      state.maxStep = 1;
+
+      $("group-drop").className = "drop ok";
+      setFileState("group-state", file.name + " · " + parsed.members.length + " members", "ok");
+
+      var balances = parsed.statementBalances || {};
+      var held = Number(balances.mpesa || 0) + Number(balances.cash || 0);
+      $("group-summary").innerHTML =
+        "<div class='kv'>" +
+        "<div><span>Group</span><b>" + esc(parsed.group) + "</b></div>" +
+        "<div><span>Period</span><b>" + esc(parsed.period) + "</b></div>" +
+        "<div><span>Members</span><b>" + parsed.members.length + "</b></div>" +
+        "<div><span>Opening</span><b>" + money(parsed.openingBalance) + "</b></div>" +
+        "<div><span>Accounts hold</span><b>" + money(held) + "</b></div>" +
+        "</div>";
+      ready();
+    };
+    reader.readAsText(file);
+  }
+
+  $("csv-file").addEventListener("change", function (e) {
+    var file = e.target.files && e.target.files[0];
+    if (!file) return;
+    if (/\.pdf$/i.test(file.name) || file.type === "application/pdf") {
+      loadPdf(file, $("pdf-password").value);
+    } else {
+      loadCsv(file);
+    }
+  });
+  $("pdf-read").addEventListener("click", function () {
+    if (state.pdfFile) loadPdf(state.pdfFile, $("pdf-password").value);
+    else fail1("Choose a PDF statement first.");
+  });
+  $("pdf-password").addEventListener("keydown", function (e) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      $("pdf-read").click();
+    }
+  });
+  $("group-file").addEventListener("change", function (e) {
+    if (e.target.files && e.target.files[0]) loadGroup(e.target.files[0]);
+  });
+
+  $("to-step-2").addEventListener("click", function () { goStep(2); });
+  $("back-1").addEventListener("click", function () { goStep(1); });
+  $("back-2").addEventListener("click", function () { goStep(2); });
+  $("back-3").addEventListener("click", function () { goStep(3); });
+
+  /* ---------- 2. columns ---------- */
+
+  function cleanMapping() {
+    var out = {};
+    Object.keys(state.mapping || {}).forEach(function (field) {
+      var value = state.mapping[field];
+      if (value !== undefined && value !== null && value !== "") out[field] = Number(value);
+    });
+    return out;
+  }
+
+  function renderMapping() {
+    var headers = state.parsed.headers;
+    var html = FIELDS.map(function (field) {
+      var name = field[0];
+      var label = field[1];
+      var tag = field[2];
+      var current = state.mapping[name];
+      var options = ["<option value=''>— not in this file —</option>"].concat(
+        headers.map(function (h, i) {
+          return "<option value='" + i + "'" + (Number(current) === i ? " selected" : "") + ">" +
+            i + " · " + esc(h || "(blank header)") + "</option>";
+        })
+      ).join("");
+      var tagHtml = tag === "req"
+        ? "<span class='tag req'>required</span>"
+        : tag === "rec" ? "<span class='tag rec'>recommended</span>" : "";
+      return "<div class='field'><label for='map-" + name + "'>" + esc(label) + tagHtml + "</label>" +
+        "<select id='map-" + name + "' data-field='" + name + "'>" + options + "</select></div>";
+    }).join("");
+
+    $("map-grid").innerHTML = html;
+
+    $("map-grid").querySelectorAll("select").forEach(function (select) {
+      select.addEventListener("change", function () {
+        var field = select.getAttribute("data-field");
+        if (select.value === "") delete state.mapping[field];
+        else state.mapping[field] = Number(select.value);
+        state.resolutions = {};
+        renderPreview();
+      });
+    });
+
+    renderPreview();
+  }
+
+  function renderPreview() {
+    if (!state.parsed) return;
+    var mapping = cleanMapping();
+    var needs = ["date", "details", "paidIn"].filter(function (f) { return mapping[f] === undefined; });
+    var optional = [
+      ["receipt", "Without a receipt column, the same payment can be counted twice."],
+      ["withdrawn", "Without a money-out column, withdrawals will not be seen at all."],
+      ["status", "Without a status column, failed transactions cannot be told apart from successful ones."],
+    ].filter(function (pair) { return mapping[pair[0]] === undefined; });
+
+    var box = $("map-warning");
+    if (needs.length) {
+      box.className = "msg msg-bad";
+      box.innerHTML = "<b>The importer cannot run without " + needs.join(", ") + ".</b>";
+      $("to-step-3").disabled = true;
+    } else if (optional.length) {
+      box.className = "msg msg-warn";
+      box.innerHTML = "<b>Optional columns are unmapped:</b><ul>" +
+        optional.map(function (p) { return "<li>" + esc(p[1]) + "</li>"; }).join("") + "</ul>";
+      $("to-step-3").disabled = false;
+    } else {
+      box.className = "msg msg-ok";
+      box.innerHTML = "<b>All six columns are mapped.</b>";
+      $("to-step-3").disabled = false;
+    }
+
+    var rows = importer.toTransactions(state.parsed, mapping).slice(0, 5);
+    var head = "<thead><tr><th class='n'>Line</th><th class='n'>Date</th><th>Details</th>" +
+      "<th class='n'>Money in</th><th class='n'>Money out</th><th>Receipt</th><th>Status</th></tr></thead>";
+    var body = rows.map(function (t) {
+      return "<tr><td class='n line-ref'>" + t.line + "</td>" +
+        "<td class='n'>" + (t.date ? esc(t.date) : "<span class='neg'>" + esc(t.rawDate || "unreadable") + "</span>") + "</td>" +
+        "<td>" + esc(t.details) + "</td>" +
+        "<td class='n'>" + (t.paidIn ? money(t.paidIn) : "—") + "</td>" +
+        "<td class='n'>" + (t.withdrawn ? money(t.withdrawn) : "—") + "</td>" +
+        "<td class='ref'>" + esc(t.receipt) + "</td>" +
+        "<td>" + esc(t.status) + "</td></tr>";
+    }).join("");
+
+    $("preview-table").innerHTML = head + "<tbody>" + body + "</tbody>";
+    $("preview-note").textContent = "Showing " + Math.min(5, state.parsed.rows.length) +
+      " of " + state.parsed.rows.length + " rows. Line numbers match the file, so a finding can be traced back.";
+  }
+
+  $("to-step-3").addEventListener("click", function () { rebuild(false); });
+
+  /* ---------- 3. review ---------- */
+
+  function rebuild(keepScroll) {
+    try {
+      state.result = importer.buildStatement(state.group, state.source, cleanMapping(), state.resolutions);
+    } catch (err) {
+      show($("review-body"), "<div class='msg msg-bad'><b>The importer stopped:</b> " + esc(err.message) + "</div>");
+      goStep(3);
+      return;
+    }
+    renderReview();
+    goStep(3);
+    if (keepScroll) window.scrollTo(0, Number(keepScroll) || 0);
+  }
+
+  function issueBlock(title, issues) {
+    if (!issues.length) return "";
+    var errors = issues.filter(function (i) { return i.level === "error"; });
+    return "<h2>" + esc(title) + "</h2>" +
+      "<div class='issues " + (errors.length ? "issues-error" : "issues-warn") + "'>" +
+      (errors.length
+        ? "<b>" + errors.length + " thing" + (errors.length === 1 ? "" : "s") + " must be resolved before this statement is sent.</b>"
+        : "<b>Worth a look, not a blocker.</b>") +
+      "<ul>" + issues.map(function (i) {
+        return "<li><b>" + (i.level === "error" ? "Error" : "Note") + ":</b> " + esc(i.message) + "</li>";
+      }).join("") + "</ul></div>";
+  }
+
+  function renderReview() {
+    var result = state.result;
+    var report = result.report;
+    var statement = result.statement;
+    var c = api.compute(statement);
+    var validation = api.validate(statement);
+
+    var diffLabel = c.reconciled ? "" : c.difference < 0 ? "statement is short" : "statement is over";
+    $("recon-card").innerHTML =
+      "<div class='recon-strip " + (c.reconciled ? "ok" : "bad") + "'>" +
+      "<div><span>Statement closes</span><b>" + money(c.closing) + "</b></div>" +
+      "<div><span>Accounts hold</span><b>" + money(c.stated) + "</b></div>" +
+      "<div><span>Difference</span><b class='diff'>" + money(Math.abs(c.difference)) + "</b>" +
+      (diffLabel ? "<i>" + diffLabel + "</i>" : "") + "</div>" +
+      "<div><span>Status</span><b>" + (c.reconciled ? "✓ Reconciled" : "✗ Does not reconcile") + "</b></div>" +
+      "</div>";
+
+    var html = "";
+
+    html += issueBlock("What the importer found", report.issues);
+    html += issueBlock("What the statement check says", validation);
+
+    if (!report.issues.length && !validation.length) {
+      html += "<div class='msg msg-ok'><b>Nothing outstanding.</b> Every payment was matched and the books agree with the accounts.</div>";
+    }
+
+    // Human decisions: unknown, set aside, and already assigned rows all stay editable.
+    var decisions = [];
+    report.unknown.forEach(function (u) {
+      decisions.push({ line: u.line, date: u.date, amount: u.amount, details: u.details, current: "" });
+    });
+    report.matched.filter(function (m) { return m.via === "manual"; }).forEach(function (m) {
+      decisions.push({ line: m.line, date: m.date, amount: m.amount, details: m.details || "", current: m.member });
+    });
+    report.ignored.forEach(function (i) {
+      decisions.push({ line: i.line, date: i.date, amount: i.amount, details: i.details, current: "__ignore__" });
+    });
+    decisions.sort(function (a, b) { return a.line - b.line; });
+
+    html += "<h2>Needs a decision</h2>";
+    if (!decisions.length) {
+      html += "<p class='table-note'>Nothing needs your decision. Every payment was matched by phone, name or surname.</p>";
+    } else {
+      html += "<p class='table-note'>The importer will not guess. Assign money only when you know who paid; the month must still add up afterwards.</p>" +
+        "<div class='scroll'><table><thead><tr><th class='n'>Line</th><th class='n'>Date</th><th>Details in the file</th>" +
+        "<th class='n'>Amount</th><th>Decision</th></tr></thead><tbody>" +
+        decisions.map(function (d) {
+          return "<tr><td class='n line-ref'>" + d.line + "</td>" +
+            "<td class='n'>" + api.fmtDate(d.date) + "</td>" +
+            "<td>" + esc(d.details) + "</td>" +
+            "<td class='n'>" + money(d.amount) + "</td>" +
+            "<td><select data-line='" + d.line + "' aria-label='Decision for line " + d.line + "'>" + decisionOptions(statement.members, d.current) + "</select></td></tr>";
+        }).join("") + "</tbody></table></div>";
+    }
+
+    if (report.matched.length) {
+      html += "<h2>Matched payments</h2>" +
+        "<div class='scroll'><table><thead><tr><th class='n'>Line</th><th class='n'>Date</th><th>Member</th>" +
+        "<th class='n'>Amount</th><th>Matched by</th></tr></thead><tbody>" +
+        report.matched.map(function (m) {
+          return "<tr><td class='n line-ref'>" + m.line + "</td><td class='n'>" + api.fmtDate(m.date) + "</td>" +
+            "<td>" + esc(m.member) + "</td><td class='n'>" + money(m.amount) + "</td>" +
+            "<td>" + viaBadge(m.via) + "</td></tr>";
+        }).join("") + "</tbody></table></div>";
+    }
+
+    html += findingsBlock(report);
+
+    $("review-body").innerHTML = html;
+
+    var selects = $("review-body").querySelectorAll("select[data-line]");
+    for (var i = 0; i < selects.length; i += 1) {
+      selects[i].addEventListener("change", onDecision);
+    }
+
+    var errors = report.issues.filter(function (x) { return x.level === "error"; })
+      .concat(validation.filter(function (x) { return x.level === "error"; }));
+    var button = $("to-step-4");
+    button.textContent = errors.length ? "Build anyway →" : "Build the statement →";
+  }
+
+  function onDecision(event) {
+    var select = event.target;
+    var line = select.getAttribute("data-line");
+    if (select.value === "") delete state.resolutions[line];
+    else state.resolutions[line] = select.value;
+    rebuild(window.scrollY + 1);
+  }
+
+  function decisionOptions(members, current) {
+    var options = [
+      { value: "", label: "— automatic —" },
+      { value: "__ignore__", label: "Set aside (not counted)" },
+    ].concat(members.map(function (m) { return { value: m.name, label: m.name }; }));
+
+    return options.map(function (o) {
+      return "<option value='" + esc(o.value) + "'" + (o.value === current ? " selected" : "") + ">" +
+        esc(o.label) + "</option>";
+    }).join("");
+  }
+
+  function findingsBlock(report) {
+    var html = "";
+
+    if (report.outflows.length) {
+      html += "<h2>Money out — not yet an expense or a loan</h2>" +
+        "<p class='table-note'>A withdrawal is reported, never guessed. Add it to the group file's <code>expenses</code> or <code>loans</code>, then import again.</p>" +
+        "<div class='scroll'><table><thead><tr><th class='n'>Line</th><th class='n'>Date</th><th>Details</th>" +
+        "<th class='n'>Amount</th></tr></thead><tbody>" +
+        report.outflows.map(function (o) {
+          return "<tr><td class='n line-ref'>" + o.line + "</td><td class='n'>" + api.fmtDate(o.date) + "</td>" +
+            "<td>" + esc(o.details) + "</td><td class='n'>" + money(o.amount) + "</td></tr>";
+        }).join("") + "</tbody></table></div>";
+    }
+
+    if (report.duplicates.length) {
+      html += "<h2>Duplicate receipts — counted once</h2>" +
+        "<p class='table-note'>The same M-Pesa code appearing twice is the most common way a chama's books inflate. The later row is ignored; the receipt is kept in the statement once.</p>" +
+        "<div class='scroll'><table><thead><tr><th class='n'>Line</th><th>Receipt</th><th class='n'>Amount</th>" +
+        "<th>Details</th></tr></thead><tbody>" +
+        report.duplicates.map(function (d) {
+          return "<tr><td class='n line-ref'>" + d.line + "</td><td class='ref'>" + esc(d.receipt) + "</td>" +
+            "<td class='n'>" + money(d.amount) + "</td><td>" + esc(d.details) + "</td></tr>";
+        }).join("") + "</tbody></table></div>";
+    }
+
+    if (report.outsidePeriod.length) {
+      html += "<h2>Outside this period — ignored</h2>" +
+        "<p class='table-note'>These belong to another month. Import that month's export to account for them.</p>" +
+        "<div class='scroll'><table><thead><tr><th class='n'>Line</th><th class='n'>Date</th><th>Details</th>" +
+        "<th class='n'>Amount</th></tr></thead><tbody>" +
+        report.outsidePeriod.map(function (o) {
+          return "<tr><td class='n line-ref'>" + o.line + "</td><td class='n'>" + api.fmtDate(o.date) + "</td>" +
+            "<td>" + esc(o.details) + "</td><td class='n'>" + money(o.amount) + "</td></tr>";
+        }).join("") + "</tbody></table></div>";
+    }
+
+    if (report.incomplete.length) {
+      html += "<h2>Not complete — ignored</h2>" +
+        "<p class='table-note'>The statement marks these as not completed. They are not money.</p>" +
+        "<div class='scroll'><table><thead><tr><th class='n'>Line</th><th>Receipt</th><th>Status</th>" +
+        "<th class='n'>Amount</th></tr></thead><tbody>" +
+        report.incomplete.map(function (o) {
+          return "<tr><td class='n line-ref'>" + o.line + "</td><td class='ref'>" + esc(o.receipt) + "</td>" +
+            "<td>" + esc(o.status) + "</td><td class='n'>" + money(o.amount) + "</td></tr>";
+        }).join("") + "</tbody></table></div>";
+    }
+
+    return html;
+  }
+
+  /* ---------- 4. statement ---------- */
+
+  function buildView() {
+    if (!state.result) return;
+    $("doc").innerHTML = api.render(state.result.statement);
+    var c = api.compute(state.result.statement);
+    $("step4-note").textContent = c.reconciled
+      ? "Reconciled at " + money(c.closing) + "."
+      : "Does not reconcile — difference " + money(Math.abs(c.difference)) + ". The banner stays visible on purpose.";
+    goStep(4);
+  }
+
+  $("to-step-4").addEventListener("click", buildView);
+  $("print").addEventListener("click", function () { window.print(); });
+
+  $("download-json").addEventListener("click", function () {
+    if (!state.result) return;
+    var s = state.result.statement;
+    var blob = new Blob([JSON.stringify(s, null, 2) + "\n"], { type: "application/json" });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    var slug = String(s.group + "-" + s.period).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    a.href = url;
+    a.download = (slug || "statement") + ".json";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+  });
+
+  $("start-over").addEventListener("click", function () {
+    state = {
+      step: 1, maxStep: 1, source: null, sourceName: "", pdfFile: null, parsed: null,
+      group: null, groupName: "", mapping: null, resolutions: {}, result: null,
+    };
+    $("csv-file").value = "";
+    $("group-file").value = "";
+    $("pdf-password").value = "";
+    $("pdf-row").classList.add("hidden");
+    $("csv-drop").className = "drop";
+    $("group-drop").className = "drop";
+    setFileState("csv-state", "No file chosen");
+    setFileState("group-state", "No file chosen");
+    $("group-summary").innerHTML = "";
+    $("map-grid").innerHTML = "";
+    $("preview-table").innerHTML = "";
+    $("review-body").innerHTML = "";
+    $("recon-card").innerHTML = "";
+    $("doc").innerHTML = "";
+    clear1Error();
+    ready();
+    goStep(1);
+  });
+
+  ready();
+  goStep(1);
+})();
+</script>
+</body>
+</html>
